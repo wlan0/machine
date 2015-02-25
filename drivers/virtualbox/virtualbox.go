@@ -23,11 +23,13 @@ import (
 	"github.com/docker/machine/ssh"
 	"github.com/docker/machine/state"
 	"github.com/docker/machine/utils"
+	cssh "golang.org/x/crypto/ssh"
 )
 
 const (
 	dockerConfigDir = "/var/lib/boot2docker"
-	isoFilename     = "boot2docker.iso"
+	RancherUser     = "rancher"
+	RancherPass     = "rancher"
 )
 
 type Driver struct {
@@ -43,6 +45,8 @@ type Driver struct {
 	SwarmMaster    bool
 	SwarmHost      string
 	SwarmDiscovery string
+	UseRancherOS   bool
+	IsoName        string
 	storePath      string
 }
 
@@ -85,6 +89,11 @@ func GetCreateFlags() []cli.Flag {
 			Name:   "virtualbox-boot2docker-url",
 			Usage:  "The URL of the boot2docker image. Defaults to the latest available version",
 			Value:  "",
+		},
+		cli.BoolFlag{
+			Name:   "virtualbox-use-rancher-os",
+			Usage:  "Use RancherOS for base OS",
+			EnvVar: "VIRTUALBOX_RANCHER_OS",
 		},
 	}
 }
@@ -152,7 +161,14 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.SwarmMaster = flags.Bool("swarm-master")
 	d.SwarmHost = flags.String("swarm-host")
 	d.SwarmDiscovery = flags.String("swarm-discovery")
+	d.UseRancherOS = flags.Bool("virtualbox-use-rancher-os")
 	d.SSHUser = "docker"
+	d.IsoName = "boot2docker.iso"
+
+	if d.UseRancherOS {
+		d.IsoName = "rancher-os.iso"
+		d.SSHUser = "rancher"
+	}
 
 	return nil
 }
@@ -179,8 +195,8 @@ func (d *Driver) Create() error {
 
 	b2dutils := utils.NewB2dUtils("", "")
 	imgPath := utils.GetMachineCacheDir()
-	isoFilename := "boot2docker.iso"
-	commonIsoPath := filepath.Join(imgPath, "boot2docker.iso")
+	isoFilename := d.IsoName
+	commonIsoPath := filepath.Join(imgPath, isoFilename)
 	// just in case boot2docker.iso has been manually deleted
 	if _, err := os.Stat(imgPath); os.IsNotExist(err) {
 		if err := os.Mkdir(imgPath, 0700); err != nil {
@@ -195,13 +211,16 @@ func (d *Driver) Create() error {
 			return err
 		}
 	} else {
-		// todo: check latest release URL, download if it's new
-		// until then always use "latest"
-		isoURL, err = b2dutils.GetLatestBoot2DockerReleaseURL()
-		if err != nil {
-			log.Warnf("Unable to check for the latest release: %s", err)
+		if d.UseRancherOS {
+			isoURL = "https://github.com/rancherio/os/releases/download/v0.2.1/machine-rancheros.iso"
+		} else {
+			// todo: check latest release URL, download if it's new
+			// until then always use "latest"
+			isoURL, err = b2dutils.GetLatestBoot2DockerReleaseURL()
+			if err != nil {
+				log.Warnf("Unable to check for the latest release: %s", err)
+			}
 		}
-
 		if _, err := os.Stat(commonIsoPath); os.IsNotExist(err) {
 			log.Infof("Downloading %s to %s...", isoFilename, commonIsoPath)
 			if err := b2dutils.DownloadISO(imgPath, isoFilename, isoURL); err != nil {
@@ -311,7 +330,7 @@ func (d *Driver) Create() error {
 		"--port", "0",
 		"--device", "0",
 		"--type", "dvddrive",
-		"--medium", filepath.Join(d.storePath, "boot2docker.iso")); err != nil {
+		"--medium", filepath.Join(d.storePath, isoFilename)); err != nil {
 		return err
 	}
 
@@ -367,6 +386,81 @@ func (d *Driver) Create() error {
 
 	if err := d.Start(); err != nil {
 		return err
+	}
+
+	// HACK: if using Rancher OS, use default user/pass to get initial creds
+	// and configuration loaded
+	if d.UseRancherOS {
+		log.Debug("initial config for rancher")
+
+		key, err := ioutil.ReadFile(d.publicSSHKeyPath())
+		if err != nil {
+			return err
+		}
+
+		sshConfig := &cssh.ClientConfig{
+			User: RancherUser,
+			Auth: []cssh.AuthMethod{
+				cssh.Password(RancherPass),
+			},
+		}
+		sshClient, err := cssh.Dial("tcp", fmt.Sprintf("localhost:%d", d.SSHPort), sshConfig)
+		if err != nil {
+			return err
+		}
+
+		log.Debug("configuring keys for rancher")
+		session, err := sshClient.NewSession()
+		if err != nil {
+			return err
+		}
+
+		if err := session.Run(fmt.Sprintf("mkdir /home/rancher/.ssh && echo \"%s\" > /home/rancher/.ssh/authorized_keys", string(key))); err != nil {
+			return err
+		}
+		session.Close()
+	}
+
+	// TODO: move this to the provisioner
+	// configure certs
+	cmd, err := drivers.GetSSHCommandFromDriver(d, "sudo rancherctl config set -- user_docker.tls_ca_cert \"$(</home/rancher/ca.pem)\"")
+	if err != nil {
+		return err
+
+	}
+	if err := cmd.Run(); err != nil {
+		return err
+
+	}
+
+	cmd, err = drivers.GetSSHCommandFromDriver(d, "sudo rancherctl config set -- user_docker.tls_server_cert \"$(</home/rancher/server.pem)\"")
+	if err != nil {
+		return err
+
+	}
+	if err := cmd.Run(); err != nil {
+		return err
+
+	}
+
+	cmd, err = drivers.GetSSHCommandFromDriver(d, "sudo rancherctl config set -- user_docker.tls_server_key \"$(</home/rancher/server-key.pem)\"")
+	if err != nil {
+		return err
+
+	}
+	if err := cmd.Run(); err != nil {
+		return err
+
+	}
+
+	cmd, err = drivers.GetSSHCommandFromDriver(d, "sudo docker -H unix:///var/run/system-docker.sock restart userdocker")
+	if err != nil {
+		return err
+
+	}
+	if err := cmd.Run(); err != nil {
+		return err
+
 	}
 
 	return nil
@@ -492,11 +586,23 @@ func (d *Driver) GetIP() (string, error) {
 	if s != state.Running {
 		return "", drivers.ErrHostIsNotRunning
 	}
-	cmd, err := drivers.GetSSHCommandFromDriver(d, "ip addr show dev eth1")
-	if err != nil {
-		return "", err
-	}
 
+	var (
+		cmd    *exec.Cmd
+		cmdErr error
+	)
+	if d.UseRancherOS {
+		cmd, cmdErr = drivers.GetSSHCommandFromDriver(d, "sudo docker -H unix:///var/run/system-docker.sock run --rm --net=host --privileged debian:jessie ip addr show dev eth1")
+		if cmdErr != nil {
+			return "", cmdErr
+		}
+	} else {
+		cmd, cmdErr = drivers.GetSSHCommandFromDriver(d, "ip addr show dev eth1")
+		if err != nil {
+			return "", err
+		}
+
+	}
 	// reset to nil as if using from Host Stdout is already set when using DEBUG
 	cmd.Stdout = nil
 
@@ -516,6 +622,18 @@ func (d *Driver) GetIP() (string, error) {
 	}
 
 	return "", fmt.Errorf("No IP address found %s", out)
+}
+
+func (d *Driver) GetDockerConfigDir() string {
+	if d.UseRancherOS {
+		return "/home/rancher/"
+	} else {
+		return "/var/lib/boot2docker"
+	}
+}
+
+func (d *Driver) sshKeyPath() string {
+	return filepath.Join(d.storePath, "id_rsa")
 }
 
 func (d *Driver) publicSSHKeyPath() string {
