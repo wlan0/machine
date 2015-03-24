@@ -87,6 +87,8 @@ func DetectProvisioner(d drivers.Driver) (Provisioner, error) {
 		return nil, fmt.Errorf("Error parsing /etc/os-release file: %s", err)
 	}
 
+	fmt.Println(osReleaseInfo.Id)
+
 	for _, p := range provisioners {
 		provisioner := p.New(d)
 		provisioner.SetOsReleaseInfo(osReleaseInfo)

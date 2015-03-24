@@ -27,9 +27,8 @@ import (
 )
 
 const (
-	dockerConfigDir = "/var/lib/boot2docker"
-	RancherUser     = "rancher"
-	RancherPass     = "rancher"
+	RancherUser = "rancher"
+	RancherPass = "rancher"
 )
 
 type Driver struct {
@@ -418,49 +417,17 @@ func (d *Driver) Create() error {
 		if err := session.Run(fmt.Sprintf("mkdir /home/rancher/.ssh && echo \"%s\" > /home/rancher/.ssh/authorized_keys", string(key))); err != nil {
 			return err
 		}
+
 		session.Close()
 	}
 
-	// TODO: move this to the provisioner
-	// configure certs
-	cmd, err := drivers.GetSSHCommandFromDriver(d, "sudo rancherctl config set -- user_docker.tls_ca_cert \"$(</home/rancher/ca.pem)\"")
+	cmd, err := drivers.GetSSHCommandFromDriver(d, "echo \"ID=rancheros\nNAME=\"RancherOS\"\" | sudo tee /etc/os-release")
 	if err != nil {
 		return err
-
 	}
+
 	if err := cmd.Run(); err != nil {
 		return err
-
-	}
-
-	cmd, err = drivers.GetSSHCommandFromDriver(d, "sudo rancherctl config set -- user_docker.tls_server_cert \"$(</home/rancher/server.pem)\"")
-	if err != nil {
-		return err
-
-	}
-	if err := cmd.Run(); err != nil {
-		return err
-
-	}
-
-	cmd, err = drivers.GetSSHCommandFromDriver(d, "sudo rancherctl config set -- user_docker.tls_server_key \"$(</home/rancher/server-key.pem)\"")
-	if err != nil {
-		return err
-
-	}
-	if err := cmd.Run(); err != nil {
-		return err
-
-	}
-
-	cmd, err = drivers.GetSSHCommandFromDriver(d, "sudo docker -H unix:///var/run/system-docker.sock restart userdocker")
-	if err != nil {
-		return err
-
-	}
-	if err := cmd.Run(); err != nil {
-		return err
-
 	}
 
 	return nil
@@ -591,23 +558,19 @@ func (d *Driver) GetIP() (string, error) {
 		cmd    *exec.Cmd
 		cmdErr error
 	)
-	if d.UseRancherOS {
-		cmd, cmdErr = drivers.GetSSHCommandFromDriver(d, "sudo docker -H unix:///var/run/system-docker.sock run --rm --net=host --privileged debian:jessie ip addr show dev eth1")
-		if cmdErr != nil {
-			return "", cmdErr
-		}
-	} else {
-		cmd, cmdErr = drivers.GetSSHCommandFromDriver(d, "ip addr show dev eth1")
-		if err != nil {
-			return "", err
-		}
 
+	cmd, cmdErr = drivers.GetSSHCommandFromDriver(d, "ip addr show dev eth1")
+	if cmdErr != nil {
+		return "", err
 	}
+
 	// reset to nil as if using from Host Stdout is already set when using DEBUG
 	cmd.Stdout = nil
 
 	b, err := cmd.Output()
 	if err != nil {
+		log.Debug(string(b))
+		log.Debug(err)
 		return "", err
 	}
 	out := string(b)
