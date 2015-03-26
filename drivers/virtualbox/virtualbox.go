@@ -241,10 +241,6 @@ func (d *Driver) Create() error {
 
 	log.Infof("Creating VirtualBox VM...")
 
-	if err := d.generateDiskImage(d.DiskSize); err != nil {
-		return err
-	}
-
 	if err := vbm("createvm",
 		"--basefolder", d.storePath,
 		"--name", d.MachineName,
@@ -295,6 +291,16 @@ func (d *Driver) Create() error {
 		return err
 	}
 
+	if err := vbm("createhd",
+		"--filename",
+		d.diskPath(),
+		"--format",
+		"vmdk",
+		"--size",
+		fmt.Sprintf("%d", d.DiskSize)); err != nil {
+		return err
+	}
+
 	if err := vbm("modifyvm", d.MachineName,
 		"--natpf1", fmt.Sprintf("ssh,tcp,127.0.0.1,%d,,22", d.SSHPort)); err != nil {
 		return err
@@ -326,7 +332,7 @@ func (d *Driver) Create() error {
 
 	if err := vbm("storageattach", d.MachineName,
 		"--storagectl", "SATA",
-		"--port", "0",
+		"--port", "1",
 		"--device", "0",
 		"--type", "dvddrive",
 		"--medium", filepath.Join(d.storePath, isoFilename)); err != nil {
@@ -335,7 +341,7 @@ func (d *Driver) Create() error {
 
 	if err := vbm("storageattach", d.MachineName,
 		"--storagectl", "SATA",
-		"--port", "1",
+		"--port", "0",
 		"--device", "0",
 		"--type", "hdd",
 		"--medium", d.diskPath()); err != nil {

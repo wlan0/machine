@@ -16,10 +16,10 @@ import (
 
 const (
 	rancherTmpl = `user_docker:
+  tls: true
   tls_args: [--tlsverify, --tlscacert={{ .CaCertPath }}, --tlscert={{ .ServerCertPath }}, --tlskey={{ .ServerKeyPath }},
-    '-H=0.0.0.0:{{ .DockerPort }}', '-H=unix://']
-  args: [docker, -d, -s, overlay, -G, docker, -H, 'unix:///var/run/docker.sock', -H, 'tcp://0.0.0.0:{{ .DockerPort }}',
-    --tlsverify, --tlscacert={{ .CaCertPath  }}, --tlscert={{ .ServerCertPath  }}, --tlskey={{ .ServerKeyPath  }}]
+    '-H=0.0.0.0:{{ .DockerPort }}']
+  args: [docker, -d, -s, overlay, -G, docker, -H, 'unix://']
 `
 )
 
