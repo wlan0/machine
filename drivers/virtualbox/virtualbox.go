@@ -419,15 +419,17 @@ func (d *Driver) Create() error {
 		}
 
 		session.Close()
-	}
 
-	cmd, err := drivers.GetSSHCommandFromDriver(d, "echo \"ID=rancheros\nNAME=\"RancherOS\"\" | sudo tee /etc/os-release")
-	if err != nil {
-		return err
-	}
+		// HACK: rancherOS doesn't have /etc/os-release which we use in our provisioner
+		// so we create a simple one for detection
+		cmd, err := drivers.GetSSHCommandFromDriver(d, "echo \"ID=rancheros\nNAME=\"RancherOS\"\" | sudo tee /etc/os-release")
+		if err != nil {
+			return err
+		}
 
-	if err := cmd.Run(); err != nil {
-		return err
+		if err := cmd.Run(); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -458,7 +460,12 @@ func (d *Driver) Start() error {
 }
 
 func (d *Driver) Stop() error {
-	if err := vbm("controlvm", d.MachineName, "acpipowerbutton"); err != nil {
+	action := "acpipowerbutton"
+	if d.UseRancherOS {
+		action = "poweroff"
+	}
+
+	if err := vbm("controlvm", d.MachineName, action); err != nil {
 		return err
 	}
 	for {

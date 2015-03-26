@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os/exec"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/docker/machine/drivers"
 	"github.com/docker/machine/libmachine/auth"
 	"github.com/docker/machine/libmachine/provision/pkgaction"
@@ -92,6 +93,7 @@ func DetectProvisioner(d drivers.Driver) (Provisioner, error) {
 		provisioner.SetOsReleaseInfo(osReleaseInfo)
 
 		if provisioner.CompatibleWithHost() {
+			log.Debugf("Detected OS %s", osReleaseInfo.Id)
 			return provisioner, nil
 		}
 	}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os/exec"
 	"path"
+	"text/template"
 
 	"github.com/docker/machine/drivers"
 	"github.com/docker/machine/libmachine/auth"
@@ -13,9 +14,25 @@ import (
 	"github.com/docker/machine/libmachine/swarm"
 )
 
+const (
+	rancherTmpl = `user_docker:
+  tls_args: [--tlsverify, --tlscacert={{ .CaCertPath }}, --tlscert={{ .ServerCertPath }}, --tlskey={{ .ServerKeyPath }},
+    '-H=0.0.0.0:{{ .DockerPort }}', '-H=unix://']
+  args: [docker, -d, -s, overlay, -G, docker, -H, 'unix:///var/run/docker.sock', -H, 'tcp://0.0.0.0:{{ .DockerPort }}',
+    --tlsverify, --tlscacert={{ .CaCertPath  }}, --tlscert={{ .ServerCertPath  }}, --tlskey={{ .ServerKeyPath  }}]
+`
+)
+
 var (
 	ErrUnsupportedService = errors.New("unsupported service")
 )
+
+type RancherConfig struct {
+	CaCertPath     string
+	ServerCertPath string
+	ServerKeyPath  string
+	DockerPort     int
+}
 
 func init() {
 	Register("rancheros", &RegisteredProvisioner{
@@ -97,19 +114,23 @@ func (provisioner *RancherProvisioner) SetHostname(hostname string) error {
 }
 
 func (provisioner *RancherProvisioner) GetDockerOptionsDir() string {
-	return "/home/rancher"
+	return "/var/lib/rancher"
 }
 
 func (provisioner *RancherProvisioner) GenerateDockerOptions(dockerPort int, authOptions auth.AuthOptions) (*DockerOptions, error) {
-	defaultDaemonOpts := getDefaultDaemonOpts(provisioner.Driver.DriverName(), authOptions)
-	daemonOpts := fmt.Sprintf("-H tcp://0.0.0.0:%d", dockerPort)
-	daemonOptsDir := path.Join(provisioner.GetDockerOptionsDir(), "profile")
-	opts := fmt.Sprintf("%s %s", defaultDaemonOpts, daemonOpts)
-	daemonCfg := fmt.Sprintf(`EXTRA_ARGS='%s'
-CACERT=%s
-SERVERCERT=%s
-SERVERKEY=%s
-DOCKER_TLS=no`, opts, authOptions.CaCertRemotePath, authOptions.ServerCertRemotePath, authOptions.ServerKeyRemotePath)
+	var buf bytes.Buffer
+	cfg := &RancherConfig{
+		CaCertPath:     authOptions.CaCertRemotePath,
+		ServerCertPath: authOptions.ServerCertRemotePath,
+		ServerKeyPath:  authOptions.ServerKeyRemotePath,
+		DockerPort:     dockerPort,
+	}
+
+	t := template.Must(template.New("rancher").Parse(rancherTmpl))
+	t.Execute(&buf, cfg)
+	daemonCfg := buf.String()
+	daemonOptsDir := path.Join(provisioner.GetDockerOptionsDir(), "conf", "rancher.yml")
+
 	return &DockerOptions{
 		EngineOptions:     daemonCfg,
 		EngineOptionsPath: daemonOptsDir,
@@ -133,42 +154,42 @@ func (provisioner *RancherProvisioner) Provision(swarmOptions swarm.SwarmOptions
 		return err
 	}
 
-	var (
-		cmd    *exec.Cmd
-		cmdErr error
-	)
-
 	if err := ConfigureAuth(provisioner, authOptions); err != nil {
 		return err
 	}
 
-	// activate TLS config for rancher
-	cmd, cmdErr = provisioner.SSHCommand("sudo rancherctl config set -- user_docker.tls_ca_cert \"$(</home/rancher/ca.pem)\"")
-	if cmdErr != nil {
-		return cmdErr
-	}
+	//var (
+	//	cmd    *exec.Cmd
+	//	cmdErr error
+	//)
 
-	if cmdErr = cmd.Run(); cmdErr != nil {
-		return cmdErr
-	}
+	//// activate TLS config for rancher
+	//cmd, cmdErr = provisioner.SSHCommand("sudo rancherctl config set -- user_docker.tls_ca_cert \"$(</home/rancher/ca.pem)\"")
+	//if cmdErr != nil {
+	//	return cmdErr
+	//}
 
-	cmd, cmdErr = provisioner.SSHCommand("sudo rancherctl config set -- user_docker.tls_server_cert \"$(</home/rancher/server.pem)\"")
-	if cmdErr != nil {
-		return cmdErr
-	}
+	//if cmdErr = cmd.Run(); cmdErr != nil {
+	//	return cmdErr
+	//}
 
-	if cmdErr = cmd.Run(); cmdErr != nil {
-		return cmdErr
-	}
+	//cmd, cmdErr = provisioner.SSHCommand("sudo rancherctl config set -- user_docker.tls_server_cert \"$(</home/rancher/server.pem)\"")
+	//if cmdErr != nil {
+	//	return cmdErr
+	//}
 
-	cmd, cmdErr = provisioner.SSHCommand("sudo rancherctl config set -- user_docker.tls_server_key \"$(</home/rancher/server-key.pem)\"")
-	if cmdErr != nil {
-		return cmdErr
-	}
+	//if cmdErr = cmd.Run(); cmdErr != nil {
+	//	return cmdErr
+	//}
 
-	if cmdErr = cmd.Run(); cmdErr != nil {
-		return cmdErr
-	}
+	//cmd, cmdErr = provisioner.SSHCommand("sudo rancherctl config set -- user_docker.tls_server_key \"$(</home/rancher/server-key.pem)\"")
+	//if cmdErr != nil {
+	//	return cmdErr
+	//}
+
+	//if cmdErr = cmd.Run(); cmdErr != nil {
+	//	return cmdErr
+	//}
 
 	if err := configureSwarm(provisioner, swarmOptions); err != nil {
 		return err
