@@ -82,8 +82,10 @@ func (provisioner *RancherProvisioner) Hostname() (string, error) {
 }
 
 func (provisioner *RancherProvisioner) SetHostname(hostname string) error {
+	// TODO: this is temporary as it is in the RO filesystem
+	// ideally this would be persisted in /var/lib/rancher/state/etc/hostname
 	cmd, err := provisioner.SSHCommand(fmt.Sprintf(
-		"sudo hostname %s && echo %q | sudo tee /var/lib/boot2docker/etc/hostname",
+		"sudo hostname %s && echo %q | sudo tee /etc/hostname",
 		hostname,
 		hostname,
 	))
