@@ -21,6 +21,9 @@ type Provisioner interface {
 	// Get the directory where the settings files for docker are to be found
 	GetDockerOptionsDir() string
 
+	// Get the Command to set the docker engine config
+	GetDockerEnginerConfigCmd(engineOptions, engineOptionsPath string) (ssh.Output, error)
+
 	// Run a package action e.g. install
 	Package(name string, action pkgaction.PackageAction) error
 

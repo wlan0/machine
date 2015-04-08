@@ -170,3 +170,7 @@ func (provisioner *UbuntuProvisioner) GenerateDockerOptions(dockerPort int, auth
 func (provisioner *UbuntuProvisioner) GetDriver() drivers.Driver {
 	return provisioner.Driver
 }
+
+func (provisioner *UbuntuProvisioner) GetDockerEnginerConfigCmd(engineOptions, engineOptionsPath string) (ssh.Output, error) {
+	return provisioner.SSHCommand(fmt.Sprintf("echo \"%s\" | sudo tee -a %s", engineOptions, engineOptionsPath))
+}

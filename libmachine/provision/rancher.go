@@ -154,3 +154,7 @@ func (provisioner *RancherProvisioner) SSHCommand(command string) (ssh.Output, e
 func (provisioner *RancherProvisioner) GetDriver() drivers.Driver {
 	return provisioner.Driver
 }
+
+func (provisioner *RancherProvisioner) GetDockerEnginerConfigCmd(engineOptions, engineOptionsPath string) (ssh.Output, error) {
+	return provisioner.SSHCommand(fmt.Sprintf("echo \"%s\" | sudo tee %s", engineOptions, engineOptionsPath))
+}
