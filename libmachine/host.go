@@ -109,6 +109,7 @@ func (h *Host) Create(name string) error {
 
 	// TODO: Not really a fan of just checking "none" here.
 	if h.Driver.DriverName() != "none" {
+		log.Infof("Waiting for SSH")
 		if err := WaitForSSH(h); err != nil {
 			return err
 		}
@@ -336,7 +337,7 @@ func (h *Host) SaveConfig() error {
 
 func sshAvailableFunc(h *Host) func() bool {
 	return func() bool {
-		log.Debug("Getting to WaitForSSH function...")
+		log.Debugf("Getting to WaitForSSH function...")
 		hostname, err := h.Driver.GetSSHHostname()
 		if err != nil {
 			log.Debugf("Error getting IP address waiting for SSH: %s", err)

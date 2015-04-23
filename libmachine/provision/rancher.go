@@ -89,7 +89,7 @@ func (provisioner *RancherProvisioner) Hostname() (string, error) {
 
 func (provisioner *RancherProvisioner) SetHostname(hostname string) error {
 	_, err := provisioner.SSHCommand(fmt.Sprintf(
-		"sudo hostname -b %s",
+		"sudo hostname -s %s",
 		hostname,
 	))
 

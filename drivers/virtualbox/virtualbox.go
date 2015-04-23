@@ -37,12 +37,15 @@ type Driver struct {
 	Memory         int
 	DiskSize       int
 	Boot2DockerURL string
+	RancherURL     string
 	CaCertPath     string
 	PrivateKeyPath string
 	SwarmMaster    bool
 	SwarmHost      string
 	SwarmDiscovery string
 	storePath      string
+	UseRancherOS   bool
+	IsoName        string
 }
 
 func init() {
@@ -79,6 +82,17 @@ func GetCreateFlags() []cli.Flag {
 			Name:   "virtualbox-boot2docker-url",
 			Usage:  "The URL of the boot2docker image. Defaults to the latest available version",
 			Value:  "",
+		},
+		cli.BoolFlag{
+			EnvVar: "VIRTUALBOX_RANCHEROS",
+			Name:   "virtualbox-use-rancher-os",
+			Usage:  "Use RancherOS as the Base OS",
+		},
+		cli.StringFlag{
+			EnvVar: "VIRTUALBOX_RANCHER_URL",
+			Name:   "virtualbox-rancher-url",
+			Usage:  "The URL of the rancher image. Defaults to v0.4.0",
+			Value:  "https://github.com/rancherio/os/releases/download/v0.4.0/machine-rancheros.iso",
 		},
 	}
 }
@@ -147,6 +161,14 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.SwarmHost = flags.String("swarm-host")
 	d.SwarmDiscovery = flags.String("swarm-discovery")
 	d.SSHUser = "docker"
+	d.IsoName = "boot2docker.iso"
+	d.UseRancherOS = flags.Bool("virtualbox-use-rancher-os")
+	d.RancherURL = flags.String("virtualbox-rancher-url")
+
+	if d.UseRancherOS {
+		d.IsoName = "rancheros.iso"
+		d.SSHUser = "rancher"
+	}
 
 	return nil
 }
@@ -173,8 +195,14 @@ func (d *Driver) Create() error {
 	log.Infof("Creating SSH key...")
 
 	b2dutils := utils.NewB2dUtils("", "")
-	if err := b2dutils.CopyIsoToMachineDir(d.Boot2DockerURL, d.MachineName); err != nil {
-		return err
+	if d.UseRancherOS {
+		if _, err := os.Stat(filepath.Join(d.storePath, d.IsoName)); os.IsNotExist(err) {
+			b2dutils.DownloadISO(d.storePath, d.IsoName, d.RancherURL)
+		}
+	} else {
+		if err := b2dutils.CopyIsoToMachineDir(d.Boot2DockerURL, d.MachineName); err != nil {
+			return err
+		}
 	}
 
 	if err := ssh.GenerateSSHKey(d.GetSSHKeyPath()); err != nil {
@@ -191,6 +219,7 @@ func (d *Driver) Create() error {
 		"--basefolder", d.storePath,
 		"--name", d.MachineName,
 		"--register"); err != nil {
+		log.Error(err)
 		return err
 	}
 
@@ -251,6 +280,7 @@ func (d *Driver) Create() error {
 	if err != nil {
 		return err
 	}
+
 	if err := vbm("modifyvm", d.MachineName,
 		"--nic2", "hostonly",
 		"--nictype2", "virtio",
@@ -271,7 +301,8 @@ func (d *Driver) Create() error {
 		"--port", "0",
 		"--device", "0",
 		"--type", "dvddrive",
-		"--medium", filepath.Join(d.storePath, "boot2docker.iso")); err != nil {
+		"--medium", filepath.Join(d.storePath, d.IsoName)); err != nil {
+		log.Error(err)
 		return err
 	}
 
@@ -486,7 +517,7 @@ func (d *Driver) diskPath() string {
 
 // Make a boot2docker VM disk image.
 func (d *Driver) generateDiskImage(size int) error {
-	log.Debugf("Creating %d MB hard disk image...", size)
+	log.Infof("Creating %d MB hard disk image...", size)
 
 	magicString := "boot2docker, please format-me"
 

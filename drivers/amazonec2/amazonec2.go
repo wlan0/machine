@@ -381,7 +381,7 @@ func (d *Driver) Create() error {
 
 	d.InstanceId = instance.InstanceId
 
-	log.Debug("waiting for ip address to become available")
+	log.Infof("waiting for ip address to become available")
 	if err := utils.WaitFor(d.instanceIpAvailable); err != nil {
 		return err
 	}
@@ -392,7 +392,7 @@ func (d *Driver) Create() error {
 
 	d.waitForInstance()
 
-	log.Debugf("created instance ID %s, IP address %s, Private IP address %s",
+	log.Infof("created instance ID %s, IP address %s, Private IP address %s",
 		d.InstanceId,
 		d.IPAddress,
 		d.PrivateIPAddress,
