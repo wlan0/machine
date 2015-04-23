@@ -37,7 +37,7 @@ type Driver struct {
 	SSHPort             int
 	Memory              int
 	DiskSize            int
-	Boot2DockerURL      string
+	ISOURL              string
 	CaCertPath          string
 	PrivateKeyPath      string
 	SwarmMaster         bool
@@ -77,9 +77,9 @@ func GetCreateFlags() []cli.Flag {
 			Value:  20000,
 		},
 		cli.StringFlag{
-			EnvVar: "VIRTUALBOX_BOOT2DOCKER_URL",
-			Name:   "virtualbox-boot2docker-url",
-			Usage:  "The URL of the boot2docker image. Defaults to the latest available version",
+			EnvVar: "VIRTUALBOX_ISO_URL",
+			Name:   "virtualbox-iso-url",
+			Usage:  "The URL of the iso image. Defaults to boot2docker's latest available version",
 			Value:  "",
 		},
 		cli.StringFlag{
@@ -149,7 +149,7 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.CPU = flags.Int("virtualbox-cpu-count")
 	d.Memory = flags.Int("virtualbox-memory")
 	d.DiskSize = flags.Int("virtualbox-disk-size")
-	d.Boot2DockerURL = flags.String("virtualbox-boot2docker-url")
+	d.ISOURL = flags.String("virtualbox-iso-url")
 	d.SwarmMaster = flags.Bool("swarm-master")
 	d.SwarmHost = flags.String("swarm-host")
 	d.SwarmDiscovery = flags.String("swarm-discovery")
@@ -174,7 +174,7 @@ func (d *Driver) Create() error {
 	}
 
 	b2dutils := utils.NewB2dUtils("", "")
-	if err := b2dutils.CopyIsoToMachineDir(d.Boot2DockerURL, d.MachineName); err != nil {
+	if err := b2dutils.CopyIsoToMachineDir(d.ISOURL, d.MachineName); err != nil {
 		return err
 	}
 
