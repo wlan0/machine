@@ -154,6 +154,10 @@
 		{
 			"ImportPath": "google.golang.org/api/googleapi",
 			"Rev": "aa91ac681e18e52b1a0dfe29b9d8354e88c0dcf5"
-		}
+		},
+		{
+			"ImportPath": "github.com/packethost/packngo",
+			"Rev": "c106585f7a941677e522fe61666de1572c99e865"
+		},
 	]
 }
